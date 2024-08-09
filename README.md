@@ -60,7 +60,7 @@
 
     回路図
       作成したプログラムの回路図を以下図4に示す。
-    <img width="425" alt="image" src="https://github.com/user-attachments/assets/ef88751f-d430-4433-8e80-2a24aa855ded">
+    <img width="425" alt="image" src="https://github.com/user-attachments/assets/d78dc763-5bdb-4df3-815f-c6ea617ba767">
     SP32はLED制御、ホールセンサー、WiFi接続を行う。LEDは抵抗を挟んでGNDに接続している。ホールセンサーは内部センサーなので外部接続をしていない。
 
    磁石との距離はコア1内で丸めて計算し、コア0ではLEDを黄>青>赤の順で近いことを表示する。
