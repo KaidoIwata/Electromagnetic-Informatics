@@ -72,7 +72,7 @@ void loop() {
   i ++;
 }
 
-void task1(void *pvParameters){//LED点灯制御用関数
+void task1(void *pvParameters){//LED点灯制御用関数、*pvParametersで初期設定のパラメータを渡している。
   pinMode(25, OUTPUT);
   pinMode(26, OUTPUT);
   pinMode(27, OUTPUT);

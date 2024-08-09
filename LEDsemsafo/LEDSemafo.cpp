@@ -12,8 +12,7 @@
 //LED ON,OFFに使用するピン
 #define LED_PIN 26
 
-Ticker tickerSetHigh;//指定したタイマーで関数を呼び出すためのインスタンス
-Ticker tickerSetLow;
+Ticker tickerBlink;//指定したタイマーで関数を呼び出すためのインスタンス
 
 //アクセスポイント情報
 const char* ssid = "ssid";        //ssidを入力
@@ -23,6 +22,8 @@ const char* passwd = "password";      //ネットワークパスワード入力
 WebServer server(80);                     //通信を受けるポート番号（通常は80に設定）
 
 int interval = 1000;//点滅時間の制御用変数
+
+bool blinkflag = false;
 
 int changeup(int interval){  //点滅の感覚を早くする
   if(interval >= 100)
@@ -43,10 +44,15 @@ int changedown(int interval){ //点滅の感覚を長くする
 }
 
 //早くor遅く光らせる関数
-int setPin(int state){
-  digitalWrite(LED_PIN, HIGH);
-  delay(state);//点灯時間
-  digitalWrite(LED_PIN, LOW);
+void BlinkLED(){
+  if(blinkflag){
+      digitalWrite(LED_PIN, LOW);
+      delay(interval);
+      digitalWrite(LED_PIN, HIGH);
+      delay(interval);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+  }
 }
 
 void setup() {
@@ -80,7 +86,6 @@ void loop() {
 
 //TOPページにアクセスしたきの処理関数
 
-
 //on_offのアドレスにアクセスしたときの処理関数
 void handleLedOnOff() {
   String html;
@@ -90,24 +95,18 @@ void handleLedOnOff() {
   html += "<meta charset=\"utf-8\">";
   html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
   html += "<head>";
-  html += "<style>";
   html += "<title>電磁波情報学 必須課題2</title>";
-  html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }";
-  html += ".button { display: inline-block; padding: 10px 20px; font-size: 20px; cursor: pointer; text-align: center; text-decoration: none; outline: none; color: #fff; background-color: #4CAF50; border: none; border-radius: 15px; box-shadow: 0 9px #999; }";
-  html += ".button:hover { background-color: #3e8e41 }";
-  html += ".button:active { background-color: #3e8e41; box-shadow: 0 5px #666; transform: translateY(4px); }";
-  html += "</style>";
   html += "</head>";
   html += "<body>";
   html += "<h1>電磁波情報学 必須課題2</h1>";
   html += "<p>";
-  html += "Click <a href=\"/?click=on\">ON</a> / <a href=\"/?click=off\">OFF</a>";   //パラメータの送信
+  html += "<button><a href=\"/?click=swich\">ON/OFF</a></button>";   //パラメータの送信
   html += "</p>";
   html += "<p>";
-  html += "Click <a href=\"/?click=plus\">+</a>";
+  html += "<button><a href=\"/?click=plus\">+</a></button>";
   html += "</p>";
   html += "<p>";
-  html += "Click <a href=\"/?click=minus\">-</a>";
+  html += "<button><a href=\"/?click=minus\">-</a></button>";
   html += "</p>";
   html += "</body>";
   html += "</html>";
@@ -115,24 +114,18 @@ void handleLedOnOff() {
   
   if (server.hasArg("click"))                      //clickが送信されたかどうかの確認
   {
-    //LED ON
-    if (server.arg("click").equals("on"))          //サーバーから受けとったリクエストclickの値がonかどうかの判定
-    {
-      digitalWrite(LED_PIN, HIGH);
-    }
-    //LED OFF
-    else if (server.arg("click").equals("off"))    //clickの値がoffかどうかの判定
-    {
-      digitalWrite(LED_PIN, LOW);
-    } else if(server.arg("click").equals("plus"))  //clickの値がplusかどうかの判定
-    {
-      interval = changeup(interval);
-      setPin(interval);
-    } else if(server.arg("click").equals("minus")) //clickの値がminusかどうかの判定
-    {
-      interval = changedown(interval);
-      setPin(interval);
-    } 
+          //LED ON/OFF
+      if (server.arg("click").equals("swich"))          //サーバーから受けとったリクエストclickの値がonかどうかの判定
+      {
+        blinkflag = !blinkflag;//フラグを反転させる
+      } else if(server.arg("click").equals("plus"))  //clickの値がplusかどうかの判定
+      {
+        interval = changeup(interval);
+      } else if(server.arg("click").equals("minus")) //clickの値がminusかどうかの判定
+      {
+        interval = changedown(interval);
+      }
+      tickerBlink.attach_ms(interval, BlinkLED); // 点滅時間の更新
   }
   server.send(200, "text/html", html);
 }

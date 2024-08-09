@@ -1,143 +1,62 @@
 /*
+  作成者：岩田快道
+  作成日：7月3日
 
-  作成日：7月24日
-  作成者：iwatakaido
+  ESP32に付属するピン2つのうちいずれかに触れるとそのピンのIDをMacの画面に表示する
+
+  ISR(割り込み)関数にはIRAM_ATTR属性をつける必要がある
+  ISR関数からアクセスする変数にはvolatileをつける必要がある
+  割り込み処理は必要最低限の処理のみ
+
+  割り込み処理には排他制御を組み込む
+
+  mode:CHANGE->ピンの状態が変化した時
+       FALLING->HIGHからLOWに変化した時
+       RISING->LOWからHIGHに変化した時
 
 */
 
-#include <WiFi.h>
-#include <WebServer.h>
-#include <Ticker.h>
+volatile int pinjudge = -1;//ISR関数からアクセスするための変数
+volatile SemaphoreHandle_t xSemaphore;//ISR関数で排他制御するための変数
 
-//LED ON,OFFに使用するピン
-#define LED_PIN 26
-
-Ticker tickerSetHigh;//指定したタイマーで関数を呼び出すためのインスタンス
-Ticker tickerSetLow;
-
-//アクセスポイント情報
-const char* ssid = "ssid";        //ssidを入力
-const char* passwd = "password";      //ネットワークパスワード入力
-
-//WebServerクラス
-WebServer server(80);                     //通信を受けるポート番号（通常は80に設定）
-
-int interval = 1000;//点滅時間の制御用変数
-
-int changeup(int interval){  //点滅の感覚を早くする
-  if(interval >= 100)
-  {
-    interval = interval - 100;//100ms早くする
+void IRAM_ATTR onButton1() {
+  if(xSemaphoreTakeFromISR(xSemaphore, NULL) == pdTRUE){//セマフォを取得し、取得できているときに実行する
+    pinjudge = 12;//ピンに触れた時にpinIDを識別するため、判定用変数の値を変更する
   }
-
-  return interval;
+  xSemaphoreGiveFromISR(xSemaphore, NULL);//セマフォの解放
 }
 
-int changedown(int interval){ //点滅の感覚を長くする
-  if(interval <= 2000)
-  {
-    interval = interval + 100;//100ms遅くする
+void IRAM_ATTR onButton2(){
+  if(xSemaphoreTakeFromISR(xSemaphore, NULL) == pdTRUE){
+    pinjudge = 34;//ピンに触れた時にpinIDを識別するため、判定用変数の値を変更する
   }
-
-  return interval;
+  xSemaphoreGiveFromISR(xSemaphore, NULL);//セマフォの解放
 }
-
-//早くor遅く光らせる関数
-int setPin(int state){
-  digitalWrite(LED_PIN, HIGH);
-  delay(state);//点灯時間
-  digitalWrite(LED_PIN, LOW);
-}
-
 void setup() {
-  //シリアルポート設定
-  Serial.begin(115200);                   //シリアル通信のデータ転送レートを115200bpsで指定
-  pinMode(LED_PIN, OUTPUT);                   //LED_PINで指定したピンをOutput指定
-  digitalWrite(LED_PIN, LOW);                 //LED_PINで指定したピンをLowにする
-  WiFi.begin(ssid, passwd);               //アクセスポイント接続のためのIDとパスワードの設定
-  while (WiFi.status() != WL_CONNECTED) { //接続状態の確認
-    delay(300);                           //接続していなければ0.3秒待つ
-    Serial.print(".");                    //接続しなかったらシリアルモニタに「.」と表示
+  Serial.begin(115200);
+  delay(50);  // Serial Init Wait
+
+  xSemaphore = xSemaphoreCreateMutex();//競合が起きないようにミューテックスを作成するための関数で複数のタスクが同時にアクセスするのを防ぐ
+
+  if(xSemaphore == NULL){
+    while(1);//セマフォを取得できていない時の取得するまで実行する
   }
 
-  //通信が可能となったら各種情報を表示する
-  Serial.println("");                     //シリアルモニタ改行
-  Serial.println("WiFi Connected");       //接続したらシリアルモニタに「WiFi Connected」と表示
-  Serial.print("IP Address : ");          //シリアルモニタに表示
-  Serial.println(WiFi.localIP());         //割り当てられたIPアドレスをシリアルモニタに表示
+  pinMode(GPIO_NUM_12, INPUT);
+  pinMode(GPIO_NUM_34, INPUT);
 
-  //serverにアクセスしたときの処理関数
-  server.on("/", handleLedOnOff);         //TOPページのアドレスにアクセスしたときの処理関数
-  server.onNotFound(handleNotFound);      //存在しないアドレスにアクセスしたときの処理関数
-  
-  //WebServerを起動、server(80)で作成したサーバー
-  server.begin();                         //WebServer起動
+  attachInterrupt(GPIO_NUM_12, onButton1, FALLING);//ピンの状態が変化した時の割り込み処理
+  attachInterrupt(GPIO_NUM_34, onButton2, FALLING);//ピンの状態が変化した時の割り込み処理
 }
-
 void loop() {
-  server.handleClient();//常にサーバーから受け取ったリクエストをチェックし、またそのリクエストを転送するためのWebServerのインスタンス
-}
-
-//TOPページにアクセスしたきの処理関数
-
-
-//on_offのアドレスにアクセスしたときの処理関数
-void handleLedOnOff() {
-  String html;
-  //HTML記述
-  html = "<!DOCTYPE html>";
-  html += "<html lang='ja'>";
-  html += "<meta charset=\"utf-8\">";
-  html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
-  html += "<head>";
-  html += "<style>";
-  html += "<title>電磁波情報学 必須課題2</title>";
-  html += "body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }";
-  html += ".button { display: inline-block; padding: 10px 20px; font-size: 20px; cursor: pointer; text-align: center; text-decoration: none; outline: none; color: #fff; background-color: #4CAF50; border: none; border-radius: 15px; box-shadow: 0 9px #999; }";
-  html += ".button:hover { background-color: #3e8e41 }";
-  html += ".button:active { background-color: #3e8e41; box-shadow: 0 5px #666; transform: translateY(4px); }";
-  html += "</style>";
-  html += "</head>";
-  html += "<body>";
-  html += "<h1>電磁波情報学 必須課題2</h1>";
-  html += "<p>";
-  html += "Click <a href=\"/?click=on\">ON</a> / <a href=\"/?click=off\">OFF</a>";   //パラメータの送信
-  html += "</p>";
-  html += "<p>";
-  html += "Click <a href=\"/?click=plus\">+</a>";
-  html += "</p>";
-  html += "<p>";
-  html += "Click <a href=\"/?click=minus\">-</a>";
-  html += "</p>";
-  html += "</body>";
-  html += "</html>";
-  html += "";
   
-  if (server.hasArg("click"))                      //clickが送信されたかどうかの確認
-  {
-    //LED ON
-    if (server.arg("click").equals("on"))          //サーバーから受けとったリクエストclickの値がonかどうかの判定
-    {
-      digitalWrite(LED_PIN, HIGH);
-    }
-    //LED OFF
-    else if (server.arg("click").equals("off"))    //clickの値がoffかどうかの判定
-    {
-      digitalWrite(LED_PIN, LOW);
-    } else if(server.arg("click").equals("plus"))  //clickの値がplusかどうかの判定
-    {
-      interval = changeup(interval);
-      setPin(interval);
-    } else if(server.arg("click").equals("minus")) //clickの値がminusかどうかの判定
-    {
-      interval = changedown(interval);
-      setPin(interval);
-    } 
-  }
-  server.send(200, "text/html", html);
-}
+    if(pinjudge != -1){
+      Serial.printf("pin ID = %d\n", pinjudge);//ピンのIDをシリアルモニタに出力
 
-//存在しないアドレスへアクセスしたときの処理関数
-void handleNotFound(void) {
-  server.send(404, "text/plain", "Not Found");
+      if(xSemaphoreTake(xSemaphore, portMAX_DELAY) == pdTRUE){//セマフォを取得し、それが取得できているときに条件文を回す。
+                                                          //xSemaphoreはミューテックスで保存したハンドル、portMAX_DELAYは取得できるまで無限に待つことを意味する
+        pinjudge = -1;//判定用変数をリセットする
+        xSemaphoreGive(xSemaphore);//セマフォを解放する、解放されるとpdTRUEになる
+      }
+    }
 }
